@@ -1,0 +1,22 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: test
+spec:
+  #tls:
+  #- hosts:
+  #  - mouse.example.com
+  #  secretName: cafe-secret
+  rules:
+  - host: test.node1.com
+    http:
+      paths: 
+      - backend:
+          serviceName: ng01
+          servicePort: 8080
+  - host: test.node2.com
+    http:
+      paths:
+      - backend:
+          serviceName: ng02
+          servicePort: 8081
