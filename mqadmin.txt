@@ -1,1 +1,6 @@
 for i in $(cat 1.txt);do mqadmin updateTopic -c DefaultCluster -t $i;done
+for i in $(cat 1.txt);do mqadmin updateTopic -c DefaultCluster -t $i;done
+for i in $(cat 1.txt);do mqadmin updateTopic -c DefaultCluster -t $i;done
+for i in $(cat 1.txt);do mqadmin updateTopic -c DefaultCluster -t $i;done
+for i in $(cat 1.txt);do mqadmin updateTopic -c DefaultCluster -t $i;done
+for i in $(cat 1.txt);do mqadmin updateTopic -c DefaultCluster -t $i;done
