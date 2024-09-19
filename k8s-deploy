@@ -1,74 +1,18 @@
 转至元数据结尾
-由 jswbnuoji创建, 最后修改于昨天9:55 下午转至元数据起始
  
 
 项目源码地址：https://github.com/easzlab/kubeasz
 
  
 
-当前地址： https://bjshxg.itcom888.com/sa/kubeasz
+
 
  
 
 00-集群规划和基础参数设定
 注意1：请确保各节点时区设置一致、时间同步。 如果你的环境没有提供NTP 时间同步，推荐集成安装chrony
-角色
 
-主机
 
-ip
-
-vip
-
-etcd
-
-master
-
-k8s1
-
-192.168.1.1
-
--
-
-√
-
-master
-
-k8s2
-
-192.168.1.2
-
--
-
-√
-
-master
-
-k8s3
-
-192.168.1.3
-
--
-
-√
-
-node
-
-k8s4
-
-192.168.1.4
-
--
-
--
-
-node
-
-k8s5
-
-192.168.1.5
-
--
 
 -
 
@@ -76,7 +20,7 @@ k8s5
 确认每个节点均有配置crontab 的时间同步
 安装内核版本
 #升级内核到5.15
-cd /usr/local/src/;wget  file.abcmoreonline.com:9899/download/k8s/kernel-ml-5.15.102-1.el7.x86_64.rpm  -O kernel-ml-5.15.102-1.el7.x86_64.rpm ;wget  file.abcmoreonline.com:9899/download/k8s/kernel-ml-devel-5.15.102-1.el7.x86_64.rpm -O kernel-ml-devel-5.15.102-1.el7.x86_64.rpm;yum -y install kernel-ml-5.15.102-1.el7.x86_64.rpm   kernel-ml-devel-5.15.102-1.el7.x86_64.rpm ;grub2-set-default 'CentOS Linux (5.15.102-1.el7.x86_64) 7 (Core)'
+cd /usr/local/src/;wget  abc.com/download/k8s/kernel-ml-5.15.102-1.el7.x86_64.rpm  -O kernel-ml-5.15.102-1.el7.x86_64.rpm ;wget  abc.com/download/k8s/kernel-ml-devel-5.15.102-1.el7.x86_64.rpm -O kernel-ml-devel-5.15.102-1.el7.x86_64.rpm;yum -y install kernel-ml-5.15.102-1.el7.x86_64.rpm   kernel-ml-devel-5.15.102-1.el7.x86_64.rpm ;grub2-set-default 'CentOS Linux (5.15.102-1.el7.x86_64) 7 (Core)'
  
 5.15.102-1.el7.x86_64
 #相关依赖包
@@ -121,38 +65,38 @@ docker exec -it kubeasz ezctl new kmg-fat-k8s
 必要配置: 设置每个主机的host文件（所有主机都需要设置master node的hosts）
 将master主机信息写入/etc/hosts 例子：
 
-10.14.88.91  zy-tw-pg-pro-k8s-new-master01 
-10.14.88.92  zy-tw-pg-pro-k8s-new-master02 
-10.14.88.93  zy-tw-pg-pro-k8s-new-master03 
-10.14.88.94  zy-tw-pg-pro-k8s-new-master04 
-10.14.88.95  zy-tw-pg-pro-k8s-new-master05 
-10.14.88.96  zy-tw-pg-pro-k8s-new-master06 
-10.14.88.97  zy-tw-pg-pro-k8s-new-master07 
-10.14.88.99  zy-tw-pg-pro-k8s-new-node01
-10.14.88.100  zy-tw-pg-pro-k8s-new-node02
+192.168.111.1  k8s-master01 
+192.168.111.2  k8s-master02 
+192.168.111.3  k8s-master03 
+192.168.111.5  k8s-master04 
+192.168.111.5  k8s-master05 
+192.168.111.6  k8s-master06 
+192.168.111.7  k8s-master07 
+192.168.111.9  k8s-node01
+192.168.111.10  k8s-node02
  
  
 可以使用ansible 统一分发
-ansible   -m shell  -a "echo -e '\n10.14.88.91  zy-tw-pg-pro-k8s-new-master01 \n10.14.88.92  zy-tw-pg-pro-k8s-new-master02 \n10.14.88.93  zy-tw-pg-pro-k8s-new-master03 \n\n10.14.88.94  zy-tw-pg-pro-k8s-new-master04 \n10.14.88.95  zy-tw-pg-pro-k8s-new-master05 \n10.14.88.96  zy-tw-pg-pro-k8s-new-master06 \n10.14.88.97  zy-tw-pg-pro-k8s-new-master07 \n10.14.88.99  zy-tw-pg-pro-k8s-new-node01 \n10.14.88.100  zy-tw-pg-pro-k8s-new-node02'  >> /etc/hosts "
+ansible   -m shell  -a "echo -e '\n192.168.111.1  k8s-master01 \n192.168.111.2  k8s-master02 \n192.168.111.3  k8s-master03 \n\n192.168.111.5  k8s-master04 \n192.168.111.5  k8s-master05 \n192.168.111.6  k8s-master06 \n192.168.111.7  k8s-master07 \n192.168.111.9  k8s-node01 \n192.168.111.10  k8s-node02'  >> /etc/hosts "
 3.4.1 必要配置： 修改/etc/kubeasz/clusters/kmg-fat-k8s/hosts, 然后实际情况修改此hosts文件 --- 需要修改的内容：
 # 'etcd' cluster should have odd member(s) (1,3,5,...)
 [etcd]
-10.14.88.91
-10.14.88.92
-10.14.88.93
-10.14.88.94
-10.14.88.95
-10.14.88.96
-10.14.88.97
+192.168.111.1
+192.168.111.2
+192.168.111.3
+192.168.111.5
+192.168.111.5
+192.168.111.6
+192.168.111.7
 # master node(s)
 [kube_master]
-zy-tw-pg-pro-k8s-new-master01   ansible_host=10.14.88.91
-zy-tw-pg-pro-k8s-new-master02   ansible_host=10.14.88.92
-zy-tw-pg-pro-k8s-new-master03   ansible_host=10.14.88.93
-zy-tw-pg-pro-k8s-new-master04   ansible_host=10.14.88.94
-zy-tw-pg-pro-k8s-new-master05   ansible_host=10.14.88.95
-zy-tw-pg-pro-k8s-new-master06   ansible_host=10.14.88.96
-zy-tw-pg-pro-k8s-new-master07   ansible_host=10.14.88.97
+k8s-master01   ansible_host=192.168.111.1
+k8s-master02   ansible_host=192.168.111.2
+k8s-master03   ansible_host=192.168.111.3
+k8s-master04   ansible_host=192.168.111.5
+k8s-master05   ansible_host=192.168.111.5
+k8s-master06   ansible_host=192.168.111.6
+k8s-master07   ansible_host=192.168.111.7
 # work node(s)
 [kube_node]
 zy-tw-pg-pro-k8s-new-node07 ansible_host=10.14.88.107
