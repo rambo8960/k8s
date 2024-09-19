@@ -1,0 +1,556 @@
+转至元数据结尾
+由 jswbnuoji创建, 最后修改于昨天9:55 下午转至元数据起始
+ 
+
+项目源码地址：https://github.com/easzlab/kubeasz
+
+ 
+
+当前地址： https://bjshxg.itcom888.com/sa/kubeasz
+
+ 
+
+00-集群规划和基础参数设定
+注意1：请确保各节点时区设置一致、时间同步。 如果你的环境没有提供NTP 时间同步，推荐集成安装chrony
+角色
+
+主机
+
+ip
+
+vip
+
+etcd
+
+master
+
+k8s1
+
+192.168.1.1
+
+-
+
+√
+
+master
+
+k8s2
+
+192.168.1.2
+
+-
+
+√
+
+master
+
+k8s3
+
+192.168.1.3
+
+-
+
+√
+
+node
+
+k8s4
+
+192.168.1.4
+
+-
+
+-
+
+node
+
+k8s5
+
+192.168.1.5
+
+-
+
+-
+
+1.基础系统配置Chicklist
+确认每个节点均有配置crontab 的时间同步
+安装内核版本
+#升级内核到5.15
+cd /usr/local/src/;wget  file.abcmoreonline.com:9899/download/k8s/kernel-ml-5.15.102-1.el7.x86_64.rpm  -O kernel-ml-5.15.102-1.el7.x86_64.rpm ;wget  file.abcmoreonline.com:9899/download/k8s/kernel-ml-devel-5.15.102-1.el7.x86_64.rpm -O kernel-ml-devel-5.15.102-1.el7.x86_64.rpm;yum -y install kernel-ml-5.15.102-1.el7.x86_64.rpm   kernel-ml-devel-5.15.102-1.el7.x86_64.rpm ;grub2-set-default 'CentOS Linux (5.15.102-1.el7.x86_64) 7 (Core)'
+ 
+5.15.102-1.el7.x86_64
+#相关依赖包
+kernel-ml-5.15.102-1.el7.x86_64.rpm  kernel-ml-devel-5.15.102-1.el7.x86_64.rpm
+2.在每个节点安装依赖工具
+在deploy节点配置免密码登陆 注意 deploy机器到每个节点都需要配置,需要配置root用户，普通用户可能没权限
+ 
+ssh-keygen -t rsa -b 2048 回车 回车 回车
+ssh-copy-id $IPs #$IPs为所有节点地址包括自身，按照提示输入yes 和root密码
+在每个节点安装Docker
+#添加 Docker 仓库
+yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+ 
+#更新软件包缓存
+yum makecache fast
+ 
+#安装 Docker 相关软件包
+yum install -y docker-ce-20.10.23 docker-ce-cli-20.10.23 containerd.io
+ 
+#配置docker 使用systemd启动
+cat <<EOF > /etc/docker/daemon.json
+{
+  "exec-opts": ["native.cgroupdriver=systemd"]
+}
+EOF
+ 
+#启动docker并配置开机启动
+systemctl daemon-reload
+systemctl start docker
+systemctl enable docker
+ 
+3. 安装集群，初始化集群配置文件，修改对应配置
+克隆项目  https://bjshxg.itcom888.com/sa/kubeasz  
+移动到  /etc/kubeasz 上
+3.1 下载更新docker二进制,docker 安装的时候需要用20以下，目前使用的是docker-ce-20.10.23（确认docker版本，因为cilium使用的cgroup2 所以docker也需要使用systemd的方式）
+./ezdown  -D -d "20.10.23"   -k "v1.20.11"
+3.2 容器化运行 kubeasz
+./ezdown -S
+3.3 配置相关文件,下面的命令会自动生成一个目录kmg-fat-k8s，目录里面包含了config.yaml 和hosts文件
+docker exec -it kubeasz ezctl new kmg-fat-k8s
+3.4 配置集群参数
+必要配置: 设置每个主机的host文件（所有主机都需要设置master node的hosts）
+将master主机信息写入/etc/hosts 例子：
+
+10.14.88.91  zy-tw-pg-pro-k8s-new-master01 
+10.14.88.92  zy-tw-pg-pro-k8s-new-master02 
+10.14.88.93  zy-tw-pg-pro-k8s-new-master03 
+10.14.88.94  zy-tw-pg-pro-k8s-new-master04 
+10.14.88.95  zy-tw-pg-pro-k8s-new-master05 
+10.14.88.96  zy-tw-pg-pro-k8s-new-master06 
+10.14.88.97  zy-tw-pg-pro-k8s-new-master07 
+10.14.88.99  zy-tw-pg-pro-k8s-new-node01
+10.14.88.100  zy-tw-pg-pro-k8s-new-node02
+ 
+ 
+可以使用ansible 统一分发
+ansible   -m shell  -a "echo -e '\n10.14.88.91  zy-tw-pg-pro-k8s-new-master01 \n10.14.88.92  zy-tw-pg-pro-k8s-new-master02 \n10.14.88.93  zy-tw-pg-pro-k8s-new-master03 \n\n10.14.88.94  zy-tw-pg-pro-k8s-new-master04 \n10.14.88.95  zy-tw-pg-pro-k8s-new-master05 \n10.14.88.96  zy-tw-pg-pro-k8s-new-master06 \n10.14.88.97  zy-tw-pg-pro-k8s-new-master07 \n10.14.88.99  zy-tw-pg-pro-k8s-new-node01 \n10.14.88.100  zy-tw-pg-pro-k8s-new-node02'  >> /etc/hosts "
+3.4.1 必要配置： 修改/etc/kubeasz/clusters/kmg-fat-k8s/hosts, 然后实际情况修改此hosts文件 --- 需要修改的内容：
+# 'etcd' cluster should have odd member(s) (1,3,5,...)
+[etcd]
+10.14.88.91
+10.14.88.92
+10.14.88.93
+10.14.88.94
+10.14.88.95
+10.14.88.96
+10.14.88.97
+# master node(s)
+[kube_master]
+zy-tw-pg-pro-k8s-new-master01   ansible_host=10.14.88.91
+zy-tw-pg-pro-k8s-new-master02   ansible_host=10.14.88.92
+zy-tw-pg-pro-k8s-new-master03   ansible_host=10.14.88.93
+zy-tw-pg-pro-k8s-new-master04   ansible_host=10.14.88.94
+zy-tw-pg-pro-k8s-new-master05   ansible_host=10.14.88.95
+zy-tw-pg-pro-k8s-new-master06   ansible_host=10.14.88.96
+zy-tw-pg-pro-k8s-new-master07   ansible_host=10.14.88.97
+# work node(s)
+[kube_node]
+zy-tw-pg-pro-k8s-new-node07 ansible_host=10.14.88.107
+zy-tw-pg-pro-k8s-new-node05 ansible_host=10.14.88.105
+ 
+[k8snewnode]
+ 
+#
+# [optional] harbor server, a private docker registry
+# 'NEW_INSTALL': 'true' to install a harbor server; 'false' to integrate with existed one
+[harbor]
+#192.168.1.8 NEW_INSTALL=false
+ 
+# [optional] loadbalance for accessing k8s from outside
+[ex_lb]
+#192.168.1.6 LB_ROLE=backup EX_APISERVER_VIP=192.168.1.250 EX_APISERVER_PORT=8443
+#192.168.1.7 LB_ROLE=master EX_APISERVER_VIP=192.168.1.250 EX_APISERVER_PORT=8443
+ 
+# [optional] ntp server for the cluster
+[chrony]
+#192.168.1.1
+ 
+[all:vars]
+# --------- Main Variables ---------------
+ 
+SECURE_PORT="6443"
+# Cluster container-runtime supported: docker, containerd
+CONTAINER_RUNTIME="docker"
+ 
+# Network plugins supported: calico, flannel, kube-router, cilium, kube-ovn
+CLUSTER_NETWORK="cilium"   ##网络插件
+ 
+# Service proxy mode of kube-proxy: 'iptables' or 'ipvs'
+PROXY_MODE="ipvs"
+ 
+# K8S Service CIDR, not overlap with node(host) networking
+SERVICE_CIDR="172.50.0.0/16"  ##修改网段
+ 
+# Cluster CIDR (Pod CIDR), not overlap with node(host) networking
+CLUSTER_CIDR="172.100.0.0/16" ##修改网段
+ 
+# NodePort Range
+NODE_PORT_RANGE="30000-32767"
+ 
+# Cluster DNS Domain
+CLUSTER_DNS_DOMAIN="cluster.local"
+ 
+# -------- Additional Variables (don't change the default value right now) ---
+# Binaries Directory
+bin_dir="/opt/kube/bin"
+ 
+# Deploy Directory (kubeasz workspace)
+base_dir="/etc/kubeasz"
+ 
+# Directory for a specific cluster
+cluster_dir="{{ base_dir }}/clusters/skg-tw-prod"
+ 
+# CA and other components cert/key Directory
+ca_dir="/etc/kubernetes/ssl"
+ 
+/etc/kubeasz/clusters/kmg-fat-k8s/config.yml 修改点
+
+############################
+# prepare
+############################
+# 可选离线安装系统软件包 (offline|online)
+INSTALL_SOURCE: "offline"   ##使用offline
+ 
+# 可选进行系统安全加固 github.com/dev-sec/ansible-collection-hardening
+OS_HARDEN: false
+ 
+# 设置时间源服务器【重要：集群内机器时间必须同步】
+ntp_servers:
+  - "10.104.16.100"      ##需要设置NTP的同步时间
+ 
+# 设置允许内部时间同步的网络段，比如"10.0.0.0/8"，默认全部允许
+local_network: "0.0.0.0/0"
+ 
+ 
+############################
+# role:deploy
+############################
+# default: ca will expire in 100 years
+# default: certs issued by the ca will expire in 50 years
+CA_EXPIRY: "876000h"
+CERT_EXPIRY: "438000h"
+ 
+# kubeconfig 配置参数
+CLUSTER_NAME: "jp-prod"              ##修改集群名字
+CONTEXT_NAME: "context-{{ CLUSTER_NAME }}"
+ 
+ 
+############################
+# role:etcd
+############################
+# 设置不同的wal目录，可以避免磁盘io竞争，提高性能
+ETCD_DATA_DIR: "/data/etcd"      ##修改到data
+ETCD_WAL_DIR: ""
+ 
+ 
+############################
+# role:runtime [containerd,docker]
+############################
+# ------------------------------------------- containerd
+# [.]启用容器仓库镜像
+ENABLE_MIRROR_REGISTRY: true
+ 
+# [containerd]基础容器镜像
+SANDBOX_IMAGE: "easzlab/pause-amd64:3.5"
+ 
+# [containerd]容器持久化存储目录
+CONTAINERD_STORAGE_DIR: "/data/containerd"      ##修改到data
+ 
+# ------------------------------------------- docker
+# [docker]容器存储目录
+DOCKER_STORAGE_DIR: "/data/docker"    ##修改到data
+ 
+# [docker]开启Restful API
+ENABLE_REMOTE_API: false
+ 
+# [docker]信任的HTTP仓库
+INSECURE_REG: '["127.0.0.1/8","harbor.public.com","harbor.pgsitepro.com:18080"]'    ##增加信任的仓库
+ 
+ 
+############################
+# role:kube-master
+############################
+# k8s 集群 master 节点证书配置，可以添加多个ip和域名（比如增加公网ip和域名）
+MASTER_CERT_HOSTS:
+  - "10.1.1.1"
+  - "k8s.test.io"
+  - "k8s.skg-jp-prokg.com"    ##增加对应的域名
+ 
+# node 节点上 pod 网段掩码长度（决定每个节点最多能分配的pod ip地址）
+# 如果flannel 使用 --kube-subnet-mgr 参数，那么它将读取该设置为每个节点分配pod网段
+# https://github.com/coreos/flannel/issues/847
+NODE_CIDR_LEN: 24
+ 
+ 
+############################
+# role:kube-node
+############################
+# Kubelet 根目录
+KUBELET_ROOT_DIR: "/data/kubelet"    ##修改到/data
+ 
+# node节点最大pod 数
+MAX_PODS: 100
+ 
+# 配置为kube组件（kubelet,kube-proxy,dockerd等）预留的资源量
+# 数值设置详见templates/kubelet-config.yaml.j2
+KUBE_RESERVED_ENABLED: "yes"     ##修改成yes
+ 
+# k8s 官方不建议草率开启 system-reserved, 除非你基于长期监控，了解系统的资源占用状况；
+# 并且随着系统运行时间，需要适当增加资源预留，数值设置详见templates/kubelet-config.yaml.j2
+# 系统预留设置基于 4c/8g 虚机，最小化安装系统服务，如果使用高性能物理机可以适当增加预留
+# 另外，集群安装时候apiserver等资源占用会短时较大，建议至少预留1g内存
+SYS_RESERVED_ENABLED: "no"
+ 
+# haproxy balance mode
+BALANCE_ALG: "roundrobin"
+ 
+ 
+############################
+# role:network [flannel,calico,cilium,kube-ovn,kube-router]
+############################
+# ------------------------------------------- flannel
+# [flannel]设置flannel 后端"host-gw","vxlan"等
+FLANNEL_BACKEND: "vxlan"
+DIRECT_ROUTING: false
+ 
+# [flannel] flanneld_image: "quay.io/coreos/flannel:v0.10.0-amd64"
+flannelVer: "v0.13.0-amd64"
+flanneld_image: "easzlab/flannel:{{ flannelVer }}"
+ 
+# [flannel]离线镜像tar包
+flannel_offline: "flannel_{{ flannelVer }}.tar"
+ 
+# ------------------------------------------- calico
+# [calico]设置 CALICO_IPV4POOL_IPIP=“off”,可以提高网络性能，条件限制详见 docs/setup/calico.md
+CALICO_IPV4POOL_IPIP: "off"          ##默认是Always    ，自建机房可以为off ,云上机房需要Always
+ 
+# [calico]设置 calico-node使用的host IP，bgp邻居通过该地址建立，可手工指定也可以自动发现
+IP_AUTODETECTION_METHOD: "can-reach={{ groups['kube_master'][0] }}"
+ 
+# [calico]设置calico 网络 backend: brid, vxlan, none
+CALICO_NETWORKING_BACKEND: "brid"
+ 
+# [calico]更新支持calico 版本: [v3.3.x] [v3.4.x] [v3.8.x] [v3.15.x]
+calico_ver: "v3.15.3"
+ 
+# [calico]calico 主版本
+calico_ver_main: "{{ calico_ver.split('.')[0] }}.{{ calico_ver.split('.')[1] }}"
+ 
+# [calico]离线镜像tar包
+calico_offline: "calico_{{ calico_ver }}.tar"
+ 
+# ------------------------------------------- cilium
+# [cilium]CILIUM_ETCD_OPERATOR 创建的 etcd 集群节点数 1,3,5,7...
+ETCD_CLUSTER_SIZE: 1
+ 
+# [cilium]镜像版本
+cilium_ver: "v1.4.1"
+ 
+# [cilium]离线镜像tar包
+cilium_offline: "cilium_{{ cilium_ver }}.tar"
+ 
+# [cilium]路由选项
+# 可选项：vxlan  disabled  geneve
+# 云上环境选择vxlan   
+# 机房环境选择disabled  
+CILIUM_TUNNEL_MODE: "vxlan"
+ 
+# 可选项：true  OR  false
+# 云上环境选择vxlan 时候 CILIUM_AUTO_DIRECT_NODE_ROUTES 为 false
+# 机房环境选择disabled时候 CILIUM_AUTO_DIRECT_NODE_ROUTES 为 true
+CILIUM_AUTO_DIRECT_NODE_ROUTES: "false"
+ 
+ 
+ 
+ 
+# ------------------------------------------- kube-ovn
+# [kube-ovn]选择 OVN DB and OVN Control Plane 节点，默认为第一个master节点
+OVN_DB_NODE: "{{ groups['kube_master'][0] }}"
+ 
+# [kube-ovn]离线镜像tar包
+kube_ovn_ver: "v1.5.3"
+kube_ovn_offline: "kube_ovn_{{ kube_ovn_ver }}.tar"
+ 
+# ------------------------------------------- kube-router
+# [kube-router]公有云上存在限制，一般需要始终开启 ipinip；自有环境可以设置为 "subnet"
+OVERLAY_TYPE: "full"
+ 
+# [kube-router]NetworkPolicy 支持开关
+FIREWALL_ENABLE: "true"
+ 
+# [kube-router]kube-router 镜像版本
+kube_router_ver: "v0.3.1"
+busybox_ver: "1.28.4"
+ 
+# [kube-router]kube-router 离线镜像tar包
+kuberouter_offline: "kube-router_{{ kube_router_ver }}.tar"
+busybox_offline: "busybox_{{ busybox_ver }}.tar"
+ 
+ 
+############################
+# role:cluster-addon
+############################
+# coredns 自动安装
+dns_install: "yes"
+corednsVer: "1.7.1"
+ENABLE_LOCAL_DNS_CACHE: true
+dnsNodeCacheVer: "1.16.0"
+# 设置 local dns cache 地址
+LOCAL_DNS_CACHE: "169.254.20.10"
+ 
+# metric server 自动安装
+metricsserver_install: "yes"
+metricsVer: "v0.3.6"
+ 
+# dashboard 自动安装
+dashboard_install: "yes"
+dashboardVer: "v2.2.0"
+dashboardMetricsScraperVer: "v1.0.6"
+ 
+# ingress 自动安装
+ingress_install: "no"
+ingress_backend: "traefik"
+traefik_chart_ver: "9.12.3"
+ 
+# prometheus 自动安装
+prom_install: "yes"
+prom_namespace: "monitor"
+prom_chart_ver: "12.10.6"
+ 
+# nfs-provisioner 自动安装
+nfs_provisioner_install: "no"
+nfs_provisioner_namespace: "kube-system"
+nfs_provisioner_ver: "v4.0.1"
+nfs_storage_class: "managed-nfs-storage"
+nfs_server: "192.168.1.10"
+nfs_path: "/data/nfs"
+ 
+############################
+# role:harbor
+############################
+# harbor version，完整版本号
+HARBOR_VER: "v2.1.3"
+HARBOR_DOMAIN: "harbor.yourdomain.com"
+HARBOR_TLS_PORT: 8443
+ 
+# if set 'false', you need to put certs named harbor.pem and harbor-key.pem in directory 'down'
+HARBOR_SELF_SIGNED_CERT: true
+ 
+# install extra component
+HARBOR_WITH_NOTARY: false
+HARBOR_WITH_TRIVY: false
+HARBOR_WITH_CLAIR: false
+HARBOR_WITH_CHARTMUSEUM: true
+[root@zy-jp-pg-pro-k8s-manager-01 skg-jp-prod]# ^C
+ 
+3.5 下clilum离线镜像
+# 下载clilum镜像并保存成离线镜像
+docker  pull quay.io/cilium/cilium:v1.12.8
+docker  pull quay.io/cilium/operator-generic:v1.12.8#保存镜像到 down 下
+ 
+cd /etc/kubeasz/down
+#执行
+docker save $(docker images | grep cilium|grep operator-generic| awk 'BEGIN{OFS=":";ORS=" "}{print $1,$2}') -o cilium_v1.12.8.tar
+4. 安装K8S集群
+docker exec -it kubeasz ezctl setup skg-tw-prod all
+4.1 网络检查
+#cilium 提供了检查工具
+kubectl apply  -f kubeasz/tools/clilum-connectivity-check.yaml 
+ 
+ 
+ 
+ 
+#calico则手工验证 curl  pod  以及services 是否通畅
+5. 额外的组件安装
+5.1 在deploy节点增加etcd备份和清理定时脚本
+crontab -e
+#etcd备份
+0 */2 * * * /bin/ezctl backup skg-jp-prod  >/dev/null 2>&1
+#备份清理
+0 */12 * * * bash /data/k8s-script/clean-sn.sh  &>/dev/null
+ 
+注意  skg-jp-prod 根据实际集群名称替换
+5.2 在master01增加etcd备份删除
+脚本内容在/data/k8s/k8s-manager/k8s_cron/clea-sn.sh
+
+crontab -e
+#etcd backupclean
+0 */12 * * * bash /data/k8s-script/clean-sn.sh  &>/dev/null
+ 
+5.3 增加pod的 tcp监控
+参阅 ： https://commonconfluence.itcom888.com/pages/viewpage.action?pageId=334620194
+
+#添加脚本
+ansible add -i hosts -m copy -a "src=/data/k8s-manager/k8s_cron/container/ dest=/data/k8s-script/"
+ansible add -i hosts -m copy -a "src=/data/k8s-manager/k8s_cron/disk-clean/  dest=/data/k8s-script/disk-clean/"
+ 
+#添加定时任务
+ansible add -i hosts -m cron -a 'minute=*/5 job="bash /data/k8s-script/get_tcp.sh &>/dev/null" name="get_tcpconnect" '
+ansible add -i hosts -m cron -a 'hour=23 minute=10 job="bash /data/k8s-script/disk-clean/clean-image.sh >> /data/logs/clean_image.log" name="clean_docker_image" '
+ 
+ 
+ 
+ 
+#拷贝二进制执行文件
+ 
+ansible add -i hosts -m copy -a "src=/root/crictl dest=/bin/crictl"
+ 
+ 
+#获取机器
+ 
+kubectl get node
+#打标
+kubectl label node zy-jp-pg-pro-k8s-node55 biz.type=common
+kubectl label node zy-jp-pg-pro-k8s-node55 node-role.kubernetes.io/common=true
+ 
+ 
+ 
+ 
+6. 在管理节点安装kuboard
+#看情况而定，可以安装到k8s也可以安装到docker，可以看官网文档https://kuboard.cn/install/v3/install-in-k8s.html#%E5%AE%89%E8%A3%85
+7. 新增节点
+# 例子
+docker exec -it kubeasz  ezctl add-node <集群名字（根据/etc/kubeasz/cluster/{文件夹名称}）>  <节点名字>  ansible_host=<节点ip> 
+ 
+docker exec -it kubeasz  ezctl add-node  dp-pro-k8s  gcp-tw-dp-pro-k8s-node05  ansible_host=10.10.0.56 
+ 
+ 
+ 
+#添加脚本
+cd /etc/kubeasz/clusters/<请替换成实际文件夹>
+#节点组一般为：kube_master和kube_node
+ 
+ansible <修改实际节点组> -i hosts -m copy -a "src=/data/k8s-manager/k8s_cron/container/ dest=/data/k8s-script/"
+ansible <修改实际节点组> -i hosts -m copy -a "src=/data/k8s-manager/k8s_cron/disk-clean/  dest=/data/k8s-script/disk-clean/"
+ 
+#添加定时任务
+ansible <修改实际节点组> -i hosts -m cron -a 'minute=*/5 job="bash /data/k8s-script/get_tcp.sh &>/dev/null" name="get_tcpconnect" '
+ansible <修改实际节点组> -i hosts -m cron -a 'hour=23 minute=10 job="bash /data/k8s-script/disk-clean/clean-image.sh >> /data/logs/clean_image.log" name="clean_docker_image" '
+ 
+ 
+ 
+ 
+#拷贝二进制执行文件
+ 
+ansible <修改实际节点组> -i hosts -m copy -a "src=/etc/kubeasz/bin/containerd-bin/crictl dest=/bin/crictl"
+ansible   <修改实际节点组>  -i hosts -m shell  -a "chmod +x /bin/crictl"
+ 
+ 
+ 
+#获取机器
+ 
+kubectl get node
+#打标，只打node节点，一般机器都会先打common
+kubectl label node <替换成实际节点名称> biz.type=common
+kubectl label node <替换成实际节点名称> node-role.kubernetes.io/common=true
+ 
